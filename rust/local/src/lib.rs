@@ -16,5 +16,6 @@
 //! records add typed fields, ordered keys and streaming selection, without SQL.
 mod bridge;
 mod records;
+mod parquet_scan;
 
 pub use bridge::Store;

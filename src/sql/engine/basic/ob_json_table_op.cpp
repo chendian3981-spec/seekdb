@@ -16,6 +16,10 @@
 
 #define USING_LOG_PREFIX SQL_ENG
 #include "ob_json_table_op.h"
+#define SEEKDB_FILE_PARQUET 1
+#include "file_scan_reader.h"
+#include "common/timezone/ob_time_convert.h"
+#include "ob_file_table_op.ipp"
 #include "sql/engine/expr/ob_expr_multi_mode_func_helper.h"
 #include "sql/engine/expr/ob_expr_json_value.h"
 #include "sql/engine/expr/ob_expr_json_query.h"
@@ -395,6 +399,8 @@ OB_DEF_DESERIALIZE(ObJsonTableSpec)
       if (OB_FAIL(cols_def_.push_back(col_info))) {
       } else if (col_info->col_type_ == COL_TYPE_UNNEST) {
         table_type_flag = OB_UNNEST_TABLE;
+      } else if (col_info->truncate_ == -2026) {
+        table_type_ = OB_FILE_TABLE_TYPE;
       }
     }
   }
@@ -502,6 +508,7 @@ int ObJsonTableSpec::dup_origin_column_defs(ObIArray<ObJtColBaseInfo*>& columns)
       if (OB_FAIL(col_info.from_JtColBaseInfo(*columns.at(i)))) {
         ret = OB_ERR_UNEXPECTED;
       } else {
+        if (table_type_ == OB_FILE_TABLE_TYPE) col_info.output_column_idx_ = -1;
         ObJtColInfo* col = static_cast<ObJtColInfo*>(new (col_info_buf) ObJtColInfo());
         if (OB_FAIL(col->deep_copy(col_info, alloc_))) {
         } else if (OB_FAIL(cols_def_.push_back(col))) {
@@ -583,6 +590,7 @@ int ObJsonTableOp::generate_column_trees(JtColTreeNode*& root)
 
 int ObJsonTableOp::inner_open()
 {
+  if (MY_SPEC.table_type_ == OB_FILE_TABLE_TYPE) return open_file_scan();
   INIT_SUCC(ret);
   if (OB_FAIL(init())) {
   } else if (MY_SPEC.value_exprs_.empty()) {
@@ -597,6 +605,16 @@ int ObJsonTableOp::inner_open()
 
 int ObJsonTableOp::inner_rescan()
 {
+  if (MY_SPEC.table_type_ == OB_FILE_TABLE_TYPE) {
+    try {
+      if (nullptr == file_reader_) return OB_ERR_UNEXPECTED;
+      file_reader_->rewind();
+      return OB_SUCCESS;
+    } catch (const std::exception &error) {
+      LOG_USER_ERROR(OB_INVALID_ARGUMENT, error.what());
+      return OB_INVALID_ARGUMENT;
+    }
+  }
   int ret = OB_SUCCESS;
   if (OB_FAIL(ObOperator::inner_rescan())) {
   } else {
@@ -684,6 +702,10 @@ int ObJsonTableOp::init()
 
 int ObJsonTableOp::inner_close()
 {
+  if (nullptr != file_reader_) {
+    delete file_reader_;
+    file_reader_ = nullptr;
+  }
   INIT_SUCC(ret);
   if (OB_NOT_NULL(root_)) {
     if (OB_FAIL(root_->reset(&jt_ctx_))) {
@@ -722,6 +744,10 @@ void ScanNode::reset_reg_columns(JtScanCtx* ctx)
 
 void ObJsonTableOp::destroy()
 {
+  if (nullptr != file_reader_) {
+    delete file_reader_;
+    file_reader_ = nullptr;
+  }
   ObOperator::destroy();
 }
 
@@ -1400,6 +1426,7 @@ int UnionNode::get_next_row(void* in, JtScanCtx* ctx, bool& is_null_value)
 // json/xml table function inner
 int ObJsonTableOp::inner_get_next_row()
 {
+  if (MY_SPEC.table_type_ == OB_FILE_TABLE_TYPE) return next_file_row();
   INIT_SUCC(ret);
   bool is_root_null = false;
   if (!(jt_ctx_.is_json_table_func()

@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_RESV
 #include "config_bridge.h"
 #include "ob_dml_resolver.h"
+#include "ob_file_table_resolver.ipp"
 #include "sql/resolver/dml/ob_view_table_resolver.h"
 #include "sql/optimizer/ob_optimizer_util.h"
 #include "sql/resolver/dml/ob_default_value_utils.h"
@@ -3768,6 +3769,9 @@ int ObDMLResolver::resolve_hybrid_search_item(const ParseNode &parse_tree, Table
 
 int ObDMLResolver::resolve_json_table_item(const ParseNode &parse_tree, TableItem *&tbl_item)
 {
+  if (parse_tree.value_ == 2026) {
+    return resolve_file_table_item(parse_tree, tbl_item);
+  }
   int ret = OB_SUCCESS;
   ObDMLStmt *stmt = get_stmt();
   ObRawExpr *json_doc_expr = NULL;

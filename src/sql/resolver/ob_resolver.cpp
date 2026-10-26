@@ -94,6 +94,9 @@
 #include "sql/resolver/cmd/ob_get_diagnostics_resolver.h"
 #include "sql/resolver/dcl/ob_alter_role_resolver.h"
 #include "sql/pl/ob_pl_package.h"
+#include "sql/parser/ob_parser.h"
+#include "sql/resolver/dml/ob_select_resolver.h"
+#include "sql/resolver/ob_describe_select_resolver.ipp"
 
 namespace oceanbase
 {
@@ -473,7 +476,25 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
         break;
       }
       case T_EXPLAIN: {
-        REGISTER_STMT_RESOLVER(Explain);
+        bool file_sql_enabled = false;
+        const bool describe_select = real_parse_tree->num_child_ == 5
+            && nullptr != real_parse_tree->children_[0]
+            && real_parse_tree->children_[0]->type_ == T_EMPTY
+            && real_parse_tree->children_[0]->value_ == 2026;
+        if (describe_select &&
+            OB_FAIL(params_.session_info_->get_sys_variable(SYS_VAR_ENABLE_FILE_SQL, file_sql_enabled))) {
+        } else if (file_sql_enabled) {
+          ret = resolve_describe_select(*real_parse_tree, stmt);
+        } else if (describe_select) {
+          ParseNode explain_node = *real_parse_tree;
+          ParseNode *children[5];
+          MEMCPY(children, real_parse_tree->children_, sizeof(children));
+          children[0] = nullptr;
+          explain_node.children_ = children;
+          ret = stmt_resolver_func<ObExplainResolver>(params_, explain_node, stmt);
+        } else {
+          REGISTER_STMT_RESOLVER(Explain);
+        }
         break;
       }
       case T_ALTER_SYSTEM_SET: {

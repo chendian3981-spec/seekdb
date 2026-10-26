@@ -42,6 +42,7 @@ public:
   ObResolverParams &get_params() { return params_; }
 
 private:
+  int resolve_describe_select(const ParseNode &parse_tree, ObStmt *&stmt);
   template <typename ResolverType>
   int stmt_resolver_func(ObResolverParams &params, const ParseNode &parse_tree, ObStmt *&stmt);
 

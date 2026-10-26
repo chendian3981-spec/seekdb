@@ -2105,6 +2105,9 @@ int ObSqlParameterization::mark_tree(ParseNode *tree ,SqlInfo &sql_info)
     } else {
       const int64_t ARGS_NUMBER_FIVE = 5;
       bool mark_arr[ARGS_NUMBER_FIVE] = {0, 1, 1, 1, 1};
+      // File paths and reader options determine the output schema. The kind
+      // node is synthetic metadata, not a SQL bind parameter.
+      if (tree->value_ == 2026) mark_arr[0] = true;
       if (OB_FAIL(mark_args(tree, mark_arr, ARGS_NUMBER_FIVE, sql_info))) {
       }
     }

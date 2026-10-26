@@ -27,6 +27,7 @@
 #include "common/udt/ob_collection_type.h"
 #include "share/config/ob_server_config.h"
 #include "share/ob_lob_access_utils.h"
+#include "sql/engine/basic/ob_file_copy_op.ipp"
 
 namespace oceanbase
 {
@@ -43,6 +44,10 @@ OB_SERIALIZE_MEMBER((ObSelectIntoSpec, ObOpSpec), into_type_, user_vars_, outfil
 
 int ObSelectIntoOp::inner_open()
 {
+  if (is_file_copy()) {
+    opened_ = true;
+    return OB_SUCCESS;
+  }
   int ret = OB_SUCCESS;
   ObSQLSessionInfo *session = NULL;
   if (OB_ISNULL(session = ctx_.get_my_session())) {
@@ -188,6 +193,11 @@ int ObSelectIntoOp::calc_outfile_path()
 }
 int ObSelectIntoOp::inner_get_next_row()
 {
+  if (is_file_copy()) {
+    const int result = is_first_ ? run_file_copy(false) : OB_SUCCESS;
+    is_first_ = false;
+    return result == OB_SUCCESS ? OB_ITER_END : result;
+  }
   int ret = 0 == top_limit_cnt_ ? OB_ITER_END : OB_SUCCESS;
   int64_t row_count = 0;
   const ObItemType into_type = MY_SPEC.into_type_;
@@ -236,6 +246,13 @@ int ObSelectIntoOp::inner_get_next_row()
 
 int ObSelectIntoOp::inner_get_next_batch(const int64_t max_row_cnt)
 {
+  if (is_file_copy()) {
+    const int result = is_first_ ? run_file_copy(true) : OB_SUCCESS;
+    is_first_ = false;
+    brs_.size_ = 0;
+    brs_.end_ = true;
+    return result;
+  }
   int ret = OB_SUCCESS;
   const ObBatchRows *child_brs = NULL;
   int64_t batch_size = min(max_row_cnt, MY_SPEC.max_batch_size_);

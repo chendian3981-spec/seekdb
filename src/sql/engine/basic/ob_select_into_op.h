@@ -97,6 +97,8 @@ public:
 
 class ObSelectIntoOp : public ObOperator
 {
+  bool is_file_copy() const;
+  int run_file_copy(bool batch);
 public:
   ObSelectIntoOp(ObExecContext &exec_ctx, const ObOpSpec &spec, ObOpInput *input)
     : ObOperator(exec_ctx, spec, input),

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::records;
+use crate::parquet_scan::{parquet_open, ParquetScan};
 use std::{
     cell::{Cell as Flag, RefCell},
     path::Path,
@@ -121,6 +122,12 @@ pub mod ffi {
         fn visit(self: &RowCallback, row: &[Value]) -> i32;
     }
     extern "Rust" {
+        type ParquetScan;
+        fn parquet_open(fd: i32) -> Result<Box<ParquetScan>>;
+        fn parquet_schema(self: &ParquetScan) -> String;
+        fn parquet_project(self: &mut ParquetScan, columns: &[usize]) -> Result<()>;
+        fn parquet_next(self: &mut ParquetScan) -> Result<String>;
+        fn parquet_rewind(self: &mut ParquetScan) -> Result<()>;
         type Store;
         fn open_storage(path: &str) -> Box<Store>;
         fn status(self: &Store) -> i32;

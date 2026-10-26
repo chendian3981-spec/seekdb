@@ -58,6 +58,8 @@
 %destructor {oceanbase::common::ob_free($$);}<str_value_>
 
 %token <node> NAME_OB
+%type <node> file_table_expr file_table_kind file_table_alias
+%type <node> file_copy_stmt file_copy_options file_copy_option_list file_copy_option
 %token <node> STRING_VALUE
 %token <node> NATIONAL_LITERAL
 %token <node> INTNUM
@@ -371,6 +373,7 @@ END_P SET_VAR DELIMITER
 
         ORGANIZATION
 //-----------------------------non_reserved keyword end---------------------------------------------
+%token <non_reserved_keyword> READ_CSV READ_JSON READ_NDJSON READ_PARQUET FILE_GLOB
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
@@ -582,6 +585,7 @@ stmt:
   | drop_table_stmt         { $$ = $1; check_question_mark($$, result); }
   | drop_view_stmt          { $$ = $1; check_question_mark($$, result); }
   | explain_stmt            { $$ = $1; question_mark_issue($$, result); }
+  | file_copy_stmt          { $$ = $1; question_mark_issue($$, result); }
   | create_outline_stmt     { $$ = $1; question_mark_issue($$, result); }
   | alter_outline_stmt      { $$ = $1; question_mark_issue($$, result); }
   | drop_outline_stmt       { $$ = $1; check_question_mark($$, result); }
@@ -10835,6 +10839,10 @@ tbl_name
 {
   $$ = $1;
 }
+| file_table_expr
+{
+  $$ = $1;
+}
 | '(' table_references ')'
 {
   $$ = $2;
@@ -12256,6 +12264,38 @@ $$ = NULL;
  *	explain grammar
  *
  *****************************************************************************/
+file_copy_stmt:
+COPY '(' select_stmt ')' TO STRING_VALUE file_copy_options
+{
+  $$ = $3;
+  if (NULL != $$->children_[PARSE_SELECT_INTO] || NULL != $$->children_[PARSE_SELECT_INTO_EXTRA]) {
+    yyerror(&@3, result, "COPY query cannot contain INTO");
+    YYERROR;
+  }
+  ParseNode *into = NULL;
+  malloc_non_terminal_node(into, result->malloc_pool_, T_INTO_OUTFILE, 3, $6, $7, NULL);
+  into->value_ = 2026;
+  $$->children_[PARSE_SELECT_INTO_EXTRA] = into;
+}
+;
+
+file_copy_options:
+/* empty */ { $$ = NULL; }
+| '(' file_copy_option_list ')' { $$ = $2; }
+;
+
+file_copy_option_list:
+file_copy_option { malloc_list_node($$, result->malloc_pool_, T_EXPR_LIST, 2, 1, $1); }
+| file_copy_option_list ',' file_copy_option { push_back_list(result->malloc_pool_, result, $$, $1, $3); }
+;
+
+file_copy_option:
+column_name { malloc_non_terminal_node($$, result->malloc_pool_, T_EXPR_LIST, 2, $1, NULL); }
+| column_name column_name { malloc_non_terminal_node($$, result->malloc_pool_, T_EXPR_LIST, 2, $1, $2); }
+| column_name STRING_VALUE { malloc_non_terminal_node($$, result->malloc_pool_, T_EXPR_LIST, 2, $1, $2); }
+| column_name BOOL_VALUE { malloc_non_terminal_node($$, result->malloc_pool_, T_EXPR_LIST, 2, $1, $2); }
+;
+
 explain_stmt:
 explain_or_desc relation_factor opt_desc_column_option
 {
@@ -12265,7 +12305,14 @@ explain_or_desc relation_factor opt_desc_column_option
   malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_COLUMNS, 4, $$, $2, NULL, $3);
 }
 
-| explain_or_desc explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL);}
+| explain_or_desc explainable_stmt
+{
+  GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL);
+  if (NULL != $1 && T_SELECT == $2->type_) {
+    malloc_terminal_node($$->children_[0], result->malloc_pool_, T_EMPTY);
+    $$->children_[0]->value_ = 2026;
+  }
+}
 | explain_or_desc PRETTY explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY, $3, NULL, NULL);}
 | explain_or_desc PRETTY_COLOR explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY_COLOR, $3, NULL, NULL);}
 
@@ -12306,8 +12353,8 @@ explain_or_desc relation_factor opt_desc_column_option
 
 explain_or_desc:
 EXPLAIN {$$ = NULL;}
-| DESCRIBE {$$ = NULL;}
-| DESC  {$$ = NULL;}
+| DESCRIBE { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1; }
+| DESC  { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1; }
 ;
 
 explainable_stmt:
@@ -16624,6 +16671,28 @@ DAY
 *  JSON TABLE
 *============================================================*/
 
+file_table_expr:
+file_table_kind '(' expr_list ')' file_table_alias
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 5, $1, $3, $5, NULL, NULL);
+  $$->value_ = 2026;
+}
+;
+
+file_table_kind:
+READ_CSV { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1; }
+| READ_JSON { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 2; }
+| READ_NDJSON { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 2; }
+| READ_PARQUET { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 3; }
+| FILE_GLOB { malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 4; }
+;
+
+file_table_alias:
+/* empty */ %prec ')' { $$ = NULL; }
+| relation_name { $$ = $1; }
+| AS relation_name { $$ = $2; }
+;
+
 json_table_expr:
 JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_column_list ')' ')' relation_name
 {
@@ -18181,6 +18250,11 @@ ACCOUNT
 |       INCONSISTENT 
 |       INDIVIDUAL
 |       HYBRID_SEARCH
+|       READ_CSV
+|       READ_JSON
+|       READ_NDJSON
+|       READ_PARQUET
+|       FILE_GLOB
 ;
 
 unreserved_keyword_special:

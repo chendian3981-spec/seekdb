@@ -148,6 +148,7 @@ public:
 };
 
 class ObJsonTableOp;
+class FileScanReader;
 
 struct JtScanCtx {
     JtScanCtx()
@@ -197,7 +198,8 @@ public:
       input_(nullptr),
       j_null_(),
       j_arr_(allocator_),
-      j_obj_(allocator_)
+        j_obj_(allocator_),
+        file_reader_(nullptr)
   {
     const ObJsonTableSpec* spec_ptr = reinterpret_cast<const ObJsonTableSpec*>(&spec);
     col_count_ = spec_ptr->column_exprs_.count();
@@ -220,6 +222,8 @@ public:
 
 private:
   int init();
+  int open_file_scan();
+  int next_file_row();
   int reset_variable();  // reset var in rescan 
   int init_data_obj(); // allocate data_ array
   int generate_column_trees(JtColTreeNode*& root);
@@ -246,6 +250,7 @@ private:
   ObJsonNull j_null_;
   ObJsonArray j_arr_;
   ObJsonObject j_obj_;
+  FileScanReader *file_reader_;
 };
 
 class MulModeTableFunc {
