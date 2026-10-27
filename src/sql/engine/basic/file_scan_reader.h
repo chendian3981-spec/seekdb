@@ -66,6 +66,7 @@ struct FileScanColumn
   std::string name;
   FileValueType type = FileValueType::Null;
   bool nullable = false;
+  int8_t fractional_seconds = 0;
 };
 
 // A schema pass retains only column metadata. Execution reopens the same file
@@ -406,6 +407,7 @@ private:
           : type == "boolean" ? FileValueType::Boolean : type == "date" ? FileValueType::Date
           : type == "datetime" ? FileValueType::Datetime : FileValueType::Varchar;
       column.nullable = entry["nullable"].GetBool();
+      if (column.type == FileValueType::Datetime) column.fractional_seconds = 6;
       projected_.push_back(columns_.size());
       columns_.push_back(std::move(column));
     }
@@ -540,6 +542,10 @@ private:
     for (size_t i = 0; i < cells.size(); ++i) {
       columns_[i].type = widen(columns_[i].type, cells[i].type);
       columns_[i].nullable |= cells[i].type == FileValueType::Null;
+      if (cells[i].type == FileValueType::Datetime && cells[i].text.size() > 19) {
+        columns_[i].fractional_seconds = std::max<int8_t>(columns_[i].fractional_seconds,
+            static_cast<int8_t>(cells[i].text.size() - 20));
+      }
     }
   }
   void skip_bom()

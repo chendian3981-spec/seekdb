@@ -56,11 +56,25 @@ class FileSqlIntegration(unittest.TestCase):
                         (str(self.csv), str(self.json)))
         self.assertEqual(((1,), (2,)), rows)
 
+    def test_datetime_precision_matches_input_without_losing_fractions(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute('SELECT created FROM read_csv(%s) LIMIT 1', (str(self.csv),))
+            self.assertEqual(0, cursor.description[0][5])
+        fractional = Path(self.directory.name) / 'fractional.csv'
+        fractional.write_text('created\n2026-08-01 10:11:12\n2026-08-01 10:11:12.123456\n')
+        with self.connection.cursor() as cursor:
+            cursor.execute('SELECT created FROM read_csv(%s) ORDER BY created', (str(fractional),))
+            self.assertEqual(6, cursor.description[0][5])
+            self.assertEqual([0, 123456], [row[0].microsecond for row in cursor.fetchall()])
+
     def test_feature_switch_glob_and_error_recovery(self):
         self.sql('SET SESSION enable_file_sql=OFF')
         with self.assertRaises(pymysql.MySQLError):
             self.sql('SELECT count(*) FROM read_csv(%s)', (str(self.csv),))
         self.sql('SET SESSION enable_file_sql=ON')
+        with self.assertRaises(pymysql.MySQLError) as failure:
+            self.sql("SELECT * FROM read_csv(%s,'xml')", (str(self.csv),))
+        self.assertEqual(1064, failure.exception.args[0])
         rows = self.sql('SELECT file FROM glob(%s) ORDER BY file', (self.directory.name + '/*',))
         self.assertEqual(sorted([str(self.csv), str(self.json)]), [row[0] for row in rows])
         with self.assertRaises(pymysql.MySQLError):

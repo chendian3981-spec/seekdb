@@ -185,6 +185,7 @@ class AIFunctionIntegration(unittest.TestCase):
         self.assertEqual('原生', self.run_sql("SELECT AI_COMPLETE(%s,'原生')", (model,))[0][0])
         self.run_sql('CALL DBMS_AI_SERVICE.ALTER_AI_MODEL_ENDPOINT(%s,%s)',
                      (model + '_ep', json.dumps({'provider': 'OLLAMA'})))
+        self.assertEqual('after alter', self.run_sql("SELECT AI_COMPLETE(%s,'after alter')", (model,))[0][0])
         model = self.model('dense_embedding', '/api/embed', 'ollama')
         self.assertEqual(embedding('hello', 4), json.loads(self.run_sql("SELECT AI_EMBED(%s,'hello')", (model,))[0][0]))
 

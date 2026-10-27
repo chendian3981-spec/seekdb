@@ -27,7 +27,11 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &node, TableItem *&ta
     const_cast<ObGlobalHint &>(params_.query_ctx_->get_global_hint()).merge_plan_cache_hint(OB_USE_PLAN_CACHE_NONE);
   }
   const ParseNode &arguments = *node.children_[1];
-  if (arguments.num_child_ < 1) return OB_ERR_PARSER_SYNTAX;
+  auto syntax_error = []() {
+    LOG_USER_ERROR(OB_ERR_PARSE_SQL, "file table options must use name=value", 0, "", 1);
+    return OB_ERR_PARSE_SQL;
+  };
+  if (arguments.num_child_ < 1) return syntax_error();
   FileScanOptions options;
   const int64_t kind = node.children_[0]->value_;
   options.format = kind == 1 ? "csv" : kind == 2 ? "json" : kind == 3 ? "parquet" : "glob";
@@ -56,7 +60,7 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &node, TableItem *&ta
     const ParseNode *option = arguments.children_[i];
     if (nullptr == option || option->type_ != T_OP_EQ || option->num_child_ != 2
         || nullptr == option->children_[0] || nullptr == option->children_[1]) {
-      ret = OB_ERR_PARSER_SYNTAX;
+      ret = syntax_error();
       break;
     }
     const ParseNode *name = option->children_[0];
@@ -153,6 +157,7 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &node, TableItem *&ta
       }
       type.set_obj_type(object_type);
       type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[object_type]);
+      if (object_type == ObDateTimeType) type.set_scale(column.fractional_seconds);
       if (object_type == ObVarcharType) type.set_length(FileScanReader::MAX_RECORD_BYTES);
       type.set_collation_type(CS_TYPE_UTF8MB4_BIN);
       type.set_collation_level(CS_LEVEL_IMPLICIT);
