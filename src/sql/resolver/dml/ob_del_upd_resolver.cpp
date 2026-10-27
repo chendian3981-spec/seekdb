@@ -478,6 +478,15 @@ int ObDelUpdResolver::check_update_vector_col_with_vector_index(const ObTableSch
       }
     }
   }
+  // AI result assignments are appended after this check. A source-column
+  // update can invalidate a vector result, requiring VID maintenance too.
+  for (ObTableSchema::const_column_iterator it = table_schema->column_begin();
+       OB_SUCC(ret) && !update_with_vector_index && it != table_schema->column_end(); ++it) {
+    if (nullptr != *it && (*it)->is_ai_column()) {
+      ret = ObVectorIndexUtil::check_column_has_vector_index(*table_schema, *schema_guard,
+          (*it)->get_column_id(), update_with_vector_index, index_type);
+    }
+  }
   return ret;
 }
 
@@ -518,11 +527,34 @@ int ObDelUpdResolver::resolve_additional_assignments(ObIArray<ObTableAssignment>
                                                                  assigns.at(i).assignments_,
                                                                  update_with_vector_index))) {
     } else {
+      if (!session_info_->is_ai_column_internal()) {
+        for (int64_t j = 0; OB_SUCC(ret) && j < assigns.at(i).assignments_.count(); ++j) {
+          const ObAssignment &assignment = assigns.at(i).assignments_.at(j);
+          const auto *column = nullptr == assignment.column_expr_ ? nullptr
+              : table_schema->get_column_schema(assignment.column_expr_->get_column_id());
+          if (nullptr != column && column->is_ai_column() && !assignment.is_implicit_) {
+            ret = OB_NOT_SUPPORTED;
+            LOG_USER_ERROR(OB_NOT_SUPPORTED, "direct assignment to an AI COLUMN");
+          }
+        }
+      }
       for (ObTableSchema::const_column_iterator iter = table_schema->column_begin();
           (OB_SUCCESS == ret && iter != table_schema->column_end()); ++iter) {
         ColumnItem *col_item = NULL;
         ObColumnSchemaV2 *column_schema = *iter;
         bool need_assigned = false;
+        const bool ai_control = nullptr != column_schema &&
+            (column_schema->is_ai_column() || column_schema->get_column_name_str().prefix_match("__ai_column_"));
+        bool ai_already_assigned = false;
+        if (ai_control) {
+          for (int64_t k = 0; k < assigns.at(i).assignments_.count(); ++k) {
+            const ObAssignment &existing = assigns.at(i).assignments_.at(k);
+            if (nullptr != existing.column_expr_ && existing.column_expr_->get_column_id() == column_schema->get_column_id()) {
+              ai_already_assigned = true;
+              break;
+            }
+          }
+        }
         uint64_t column_id = OB_INVALID_ID;
         if (NULL == column_schema) {
           ret = OB_ERR_UNEXPECTED;
@@ -538,6 +570,7 @@ int ObDelUpdResolver::resolve_additional_assignments(ObIArray<ObTableAssignment>
                                             ((column_schema->is_vec_hnsw_vid_column() ||
                                               column_schema->is_vec_ivf_center_id_column()) && 
                                              (update_with_vector_index || T_INSERT_SCOPE == scope)))) {
+        } else if (FALSE_IT(need_assigned = need_assigned || (ai_control && !ai_already_assigned))) {
         } else if (need_assigned) {
           // for insert scope, on duplicate key update column list already
           // exists in insert list, therefore, only need to add assignment.
@@ -563,7 +596,7 @@ int ObDelUpdResolver::resolve_additional_assignments(ObIArray<ObTableAssignment>
                                            col_item->expr_->get_dependant_expr(),
                                            assignment.expr_))) {
               }
-            } else if (trigger_exist) {
+            } else if (trigger_exist || ai_control) {
               assignment.expr_ = col_item->expr_;
             }
             if (OB_FAIL(ret)) {
@@ -573,7 +606,7 @@ int ObDelUpdResolver::resolve_additional_assignments(ObIArray<ObTableAssignment>
                                                                       *col_item->get_expr(),
                                                                       assignment.expr_,
                                                                       session_info_))) {
-            } else if (trigger_exist &&
+            } else if ((trigger_exist || ai_control) &&
                       OB_FAIL(ObRawExprUtils::build_wrapper_inner_expr(*params_.expr_factory_, *session_info_, assignment.expr_, assignment.expr_))) {
             } else {
               // 1. set geo sub type to cast mode to column covert expr when update
@@ -1929,7 +1962,8 @@ int ObDelUpdResolver::build_column_conv_function_with_value_desc(ObInsertTableIn
                                                              tbl_col->get_collation_type())))) {
     }
     if (OB_SUCC(ret)) {
-      if (trigger_exist &&
+      if ((trigger_exist || (tbl_col->get_column_flags() & AI_COLUMN_FLAG)
+            || tbl_col->get_column_name().prefix_match("__ai_column_")) &&
           OB_FAIL(ObRawExprUtils::build_wrapper_inner_expr(*params_.expr_factory_, *session_info_, column_ref, column_ref))) {
       } else {
         table_info.column_conv_exprs_.at(idx) = column_ref;
@@ -2009,7 +2043,8 @@ int ObDelUpdResolver::build_column_conv_function_with_default_expr(ObInsertTable
                                                                   *params_.allocator_,
                                                                   *column_item->get_expr(),
                                                                   expr, session_info_))) {
-        } else if (trigger_exist &&
+        } else if ((trigger_exist || col_schema->is_ai_column()
+                      || col_schema->get_column_name_str().prefix_match("__ai_column_")) &&
                   OB_FAIL(ObRawExprUtils::build_wrapper_inner_expr(*params_.expr_factory_, *session_info_, expr, expr))) {
         } else {
           function_expr = expr;

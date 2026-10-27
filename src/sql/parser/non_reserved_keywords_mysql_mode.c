@@ -959,6 +959,7 @@ static const NonReservedKeyword Mysql_none_reserved_keywords[] =
   {"INDIVIDUAL", INDIVIDUAL},
   {"hybrid_search", HYBRID_SEARCH},
   {"read_csv", READ_CSV},
+  {"retry", RETRY},
   {"read_json", READ_JSON},
   {"read_ndjson", READ_NDJSON},
   {"read_parquet", READ_PARQUET},

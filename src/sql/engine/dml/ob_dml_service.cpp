@@ -34,6 +34,7 @@
 #include "sql/engine/ob_batch_rows.h"
 #include "sql/engine/ob_physical_plan.h"
 #include "query/vector/ob_vector_index_util.h"
+#include "sql/engine/dml/ob_ai_column_dml.ipp"
 namespace oceanbase
 {
 using namespace common;
@@ -630,6 +631,7 @@ int ObDMLService::process_insert_row(const ObInsCtDef &ins_ctdef,
                                       dml_op))) {
     } else if (OB_FAIL(check_filter_row(ins_ctdef, dml_op.get_eval_ctx(), is_skipped))) {
     }
+    if (OB_SUCC(ret) && !is_skipped) ret = prepare_ai_column_dml(ins_ctdef, dml_op, false, false);
 
   }
   return ret;
@@ -732,6 +734,7 @@ int ObDMLService::process_delete_row(const ObDelCtDef &del_ctdef,
     }
     LOG_DEBUG("process delete row", K(ret), K(is_skipped),
                "old_row", ROWEXPR2STR(dml_op.get_eval_ctx(), del_ctdef.old_row_));
+    if (OB_SUCC(ret) && !is_skipped) ret = prepare_ai_column_dml(del_ctdef, dml_op, true, false);
   }
 
   return ret;
@@ -800,6 +803,7 @@ int ObDMLService::process_update_row(const ObUpdCtDef &upd_ctdef,
                                         upd_ctdef.dupd_ctdef_.is_ignore_,
                                         false,
                                         dml_op))) {
+      } else if (OB_FAIL(prepare_ai_column_dml(upd_ctdef, dml_op, false, true))) {
       } else if (OB_FAIL(check_row_whether_changed(upd_ctdef, upd_rtdef, dml_op.get_eval_ctx()))) {
       } else if (OB_UNLIKELY(!upd_rtdef.is_row_changed_)) {
         //do nothing

@@ -24,6 +24,7 @@ namespace oceanbase
 namespace sql
 {
 class ObSQLSessionInfo;
+class ObDMLStmt;
 
 /// the interface of this module
 class ObResolver
@@ -43,6 +44,7 @@ public:
 
 private:
   int resolve_describe_select(const ParseNode &parse_tree, ObStmt *&stmt);
+  int check_ai_column_strict_read(ObDMLStmt &stmt);
   template <typename ResolverType>
   int stmt_resolver_func(ObResolverParams &params, const ParseNode &parse_tree, ObStmt *&stmt);
 

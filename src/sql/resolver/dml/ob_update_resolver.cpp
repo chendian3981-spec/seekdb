@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX SQL_RESV
 #include "sql/resolver/dml/ob_update_resolver.h"
+#include "sql/resolver/dml/ob_ai_column_retry.ipp"
 
 namespace oceanbase
 {
@@ -107,7 +108,8 @@ int ObUpdateResolver::resolve(const ParseNode &parse_tree)
 
   if (OB_SUCC(ret)) {
     // Parse cascading update columns
-    if (OB_FAIL(resolve_additional_assignments(tables_assign,
+    if (OB_FAIL(resolve_ai_column_retry(parse_tree, tables_assign))) {
+    } else if (OB_FAIL(resolve_additional_assignments(tables_assign,
                                                T_UPDATE_SCOPE))) {
     }
   }

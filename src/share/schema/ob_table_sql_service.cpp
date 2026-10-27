@@ -21,6 +21,7 @@
 #include "share/schema/ob_constraint.h"
 #include "share/schema/ob_partition_sql_helper.h"
 #include "share/ob_timezone_mgr.h"
+#include "share/schema/ob_ai_column_metadata.ipp"
 
 namespace oceanbase
 {
@@ -674,6 +675,24 @@ int ObTableSqlService::drop_table(const ObTableSchema &table_schema,
   ObSqlString sql;
   
   const uint64_t table_id = table_schema.get_table_id();
+  bool has_ai_columns = false;
+  for (int64_t i = 0; i < table_schema.get_column_count(); ++i) {
+    const auto *column = table_schema.get_column_schema_by_idx(i);
+    has_ai_columns = has_ai_columns || (nullptr != column && column->is_ai_column());
+  }
+  if (has_ai_columns) {
+    int64_t affected = 0;
+    ObSqlString cleanup;
+    if (OB_FAIL(cleanup.append_fmt("DELETE FROM oceanbase.__all_ai_column_task WHERE table_id=%lu", table_id))) {
+    } else if (OB_FAIL(sql_client.write(cleanup.ptr(), affected))) {
+    } else {
+      cleanup.reuse();
+      if (OB_FAIL(cleanup.append_fmt("DELETE FROM oceanbase.__all_ai_column WHERE table_id=%lu", table_id))) {
+      } else if (OB_FAIL(sql_client.write(cleanup.ptr(), affected))) {
+      }
+    }
+  }
+  if (OB_FAIL(ret)) return ret;
   if (OB_FAIL(check_ddl_allowed(table_schema))) {
   } else {
     // delete from __all_table_history
@@ -888,6 +907,12 @@ int ObTableSqlService::insert_single_column(
   int ret = OB_SUCCESS;
   if (OB_FAIL(check_ddl_allowed(new_table_schema))) {
   } else if (OB_FAIL(add_single_column(sql_client, new_column_schema))) {
+  }
+  const ObString &new_column_name = new_column_schema.get_column_name_str();
+  if (OB_SUCC(ret) && new_column_name.prefix_match("__ai_column_")
+      && new_column_name.length() >= 5
+      && 0 == MEMCMP(new_column_name.ptr() + new_column_name.length() - 5, "_spec", 5)) {
+    ret = persist_ai_column_metadata(sql_client, new_table_schema);
   }
   if (OB_SUCC(ret)) {
     if (new_column_schema.is_autoincrement()) {
@@ -1143,6 +1168,9 @@ int ObTableSqlService::batch_add_columns_for_create_table(common::ObISQLClient &
     } else if (OB_FAIL(exec_dml(sql_client, OB_ALL_COLUMN_HISTORY_TNAME, dml, column_count))) {
     } else if (FALSE_IT(time_guard.click("insert_all_column_history"))) {
     }
+    for (int64_t i = 0; OB_SUCC(ret) && i < tables.count(); ++i) {
+      ret = persist_ai_column_metadata(sql_client, tables.at(i));
+    }
   }
   return ret;
 }
@@ -1165,6 +1193,7 @@ int ObTableSqlService::add_columns_for_not_core(ObISQLClient &sql_client,
   } else if (OB_FAIL(dml.set_default_columns("is_deleted", "0"))) {
   } else if (OB_FAIL(exec_dml(sql_client, OB_ALL_COLUMN_HISTORY_TNAME, dml, column_count))) {
   }
+  if (OB_SUCC(ret)) ret = persist_ai_column_metadata(sql_client, table);
   return ret;
 }
 

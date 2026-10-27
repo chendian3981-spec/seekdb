@@ -97,6 +97,7 @@
 #include "sql/parser/ob_parser.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/ob_describe_select_resolver.ipp"
+#include "sql/resolver/ob_ai_column_strict_read.ipp"
 
 namespace oceanbase
 {
@@ -685,6 +686,9 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
         params_.query_ctx_->has_dml_write_stmt_ = dml_stmt->is_dml_write_stmt();
       }
 
+    }
+    if (OB_SUCC(ret) && stmt->is_dml_stmt() && !stmt->is_explain_stmt()) {
+      ret = check_ai_column_strict_read(*static_cast<ObDMLStmt *>(stmt));
     }
     if (OB_SUCC(ret)) {
       stmt::StmtType stmt_type = stmt->get_stmt_type();

@@ -3458,6 +3458,28 @@ int ObAlterTableResolver::resolve_add_column(const ParseNode &node, ObColumnName
           if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
           } else if (FALSE_IT(alter_table_stmt->set_sql_mode(session_info_->get_sql_mode()))) {
           }
+          if (OB_SUCC(ret) && alter_column_schema.is_ai_column()) {
+            ObTableSchema combined;
+            ObColumnSchemaV2 result_column;
+            ObSEArray<ObColumnSchemaV2, 3> hidden;
+            if (OB_FAIL(combined.assign(*table_schema_))) {
+            } else if (OB_FAIL(result_column.assign(alter_column_schema))) {
+            } else {
+              result_column.set_column_id(combined.get_max_used_column_id() + 1);
+              ret = combined.add_column(result_column);
+            }
+            if (OB_FAIL(ret)) {
+            } else if (OB_FAIL(build_ai_column_hidden_columns(combined, result_column, hidden))) {
+            } else {
+              for (int64_t j = 0; OB_SUCC(ret) && j < hidden.count(); ++j) {
+                AlterColumnSchema control;
+                control.alter_type_ = OB_DDL_ADD_COLUMN;
+                if (OB_FAIL(control.ObColumnSchemaV2::assign(hidden.at(j)))) {
+                } else if (OB_FAIL(alter_table_stmt->add_column(control))) {
+                }
+              }
+            }
+          }
         }
       }
     }

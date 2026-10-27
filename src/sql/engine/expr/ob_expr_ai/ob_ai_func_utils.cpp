@@ -1325,7 +1325,8 @@ int ObAIFuncUtils::get_ai_func_info(ObIAllocator &allocator, const ObString &mod
   return ret;
 }
 
-int ObAIFuncModel::call_completion(ObString &prompt, ObJsonObject *config, ObString &result)
+int ObAIFuncModel::call_completion(ObString &prompt, ObJsonObject *config, ObString &result,
+                                  const ObString &system_prompt)
 {
   int ret = OB_SUCCESS;
   ObArray<ObString> headers;
@@ -1338,6 +1339,13 @@ int ObAIFuncModel::call_completion(ObString &prompt, ObJsonObject *config, ObStr
   ObAIFuncClient client;
   ObString unencrypted_access_key;
   ObString request_model_name = get_request_model_name();
+  prompt_str = system_prompt;
+  if (nullptr != config && nullptr != config->get_value("system_prompt")) {
+    ObJsonNode *system = config->get_value("system_prompt");
+    if (system->json_type() != ObJsonNodeType::J_STRING) return OB_INVALID_ARGUMENT;
+    prompt_str.assign_ptr(system->get_data(), system->get_data_length());
+    if (OB_FAIL(config->remove("system_prompt"))) return ret;
+  }
   if (!is_completion_type()) {
     ret = OB_INVALID_ARGUMENT;
     LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai_complete, info type is not completion");

@@ -402,6 +402,8 @@ public:
 
 public:
   ObSQLSessionInfo();
+  bool is_ai_column_internal() const { return ai_column_internal_; }
+  void set_ai_column_internal(bool value) { ai_column_internal_ = value; }
   virtual ~ObSQLSessionInfo();
 
   int init(uint32_t sessid,
@@ -1030,6 +1032,7 @@ private:
   void *tx_ctx_cache_;
   common::ObString audit_filter_name_;
   ObExecutingSqlStatRecord executing_sql_stat_record_;
+  bool ai_column_internal_ = false;
 };
 
 

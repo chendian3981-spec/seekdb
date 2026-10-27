@@ -60,6 +60,8 @@
 %token <node> NAME_OB
 %type <node> file_table_expr file_table_kind file_table_alias
 %type <node> file_copy_stmt file_copy_options file_copy_option_list file_copy_option
+%type <node> ai_column_options
+%type <node> ai_column_retry_stmt
 %token <node> STRING_VALUE
 %token <node> NATIONAL_LITERAL
 %token <node> INTNUM
@@ -374,6 +376,7 @@ END_P SET_VAR DELIMITER
         ORGANIZATION
 //-----------------------------non_reserved keyword end---------------------------------------------
 %token <non_reserved_keyword> READ_CSV READ_JSON READ_NDJSON READ_PARQUET FILE_GLOB
+%token <non_reserved_keyword> RETRY
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
@@ -586,6 +589,7 @@ stmt:
   | drop_view_stmt          { $$ = $1; check_question_mark($$, result); }
   | explain_stmt            { $$ = $1; question_mark_issue($$, result); }
   | file_copy_stmt          { $$ = $1; question_mark_issue($$, result); }
+  | ai_column_retry_stmt    { $$ = $1; question_mark_issue($$, result); }
   | create_outline_stmt     { $$ = $1; question_mark_issue($$, result); }
   | alter_outline_stmt      { $$ = $1; question_mark_issue($$, result); }
   | drop_outline_stmt       { $$ = $1; check_question_mark($$, result); }
@@ -4836,6 +4840,12 @@ SIMPLE { $$[0] = T_SIMPLE; }
 ;
 
 column_definition:
+column_definition_ref data_type AI COLUMN '(' expr ')' ai_column_options
+{
+  dup_expr_string($6, result, @6.first_column, @6.last_column);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COLUMN_DEFINITION, 6, $1, $2, NULL, NULL, $6, $8);
+}
+|
 column_definition_ref data_type opt_column_attribute_list opt_column_reference opt_position_column
 {
   (void)($4);
@@ -4912,6 +4922,37 @@ CONSTRAINT opt_constraint_name CHECK '(' expr ')' check_state
   malloc_non_terminal_node($$, result->malloc_pool_, T_CHECK_CONSTRAINT, 3, NULL, $3, $$);
   $$->value_ = 1;
 }
+;
+
+ai_column_retry_stmt:
+alter_with_opt_hint TABLE relation_factor RETRY AI COLUMN column_name opt_where
+{
+  (void)($1);
+  ParseNode *from = NULL;
+  ParseNode *column = NULL;
+  ParseNode *assignment = NULL;
+  ParseNode *assignments = NULL;
+  ParseNode *marker = NULL;
+  malloc_non_terminal_node(from, result->malloc_pool_, T_TABLE_REFERENCES, 1, $3);
+  malloc_non_terminal_node(column, result->malloc_pool_, T_COLUMN_REF, 3, NULL, NULL, $7);
+  malloc_non_terminal_node(assignment, result->malloc_pool_, T_ASSIGN_ITEM, 2, column, column);
+  malloc_non_terminal_node(assignments, result->malloc_pool_, T_ASSIGN_LIST, 1, assignment);
+  malloc_non_terminal_node(marker, result->malloc_pool_, T_EMPTY, 1, $7);
+  marker->value_ = 2027;
+  malloc_non_terminal_node($$, result->malloc_pool_, T_UPDATE, 11, NULL, from, assignments, $8,
+                          NULL, NULL, marker, NULL, NULL, NULL, NULL);
+}
+| ai_column_retry_stmt ',' alter_table_action
+{
+  (void)($3);
+  $$ = $1;
+  $$->children_[6]->value_ = 2028;
+}
+;
+
+ai_column_options:
+/* empty */ { $$ = NULL; }
+| WITH '(' expr_list ')' { $$ = $3; }
 ;
 
 opt_generated_keyname:
@@ -18250,6 +18291,7 @@ ACCOUNT
 |       INCONSISTENT 
 |       INDIVIDUAL
 |       HYBRID_SEARCH
+|       RETRY
 |       READ_CSV
 |       READ_JSON
 |       READ_NDJSON

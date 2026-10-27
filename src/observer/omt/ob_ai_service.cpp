@@ -54,14 +54,23 @@ int ObAiService::init()
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
   } else {
-    is_inited_ = true;
+    share::ObThreadPool::set_run_wrapper(share::server_runtime());
+    share::ObThreadPool::set_thread_count(1);
+    if (OB_SUCC(ret = share::ObThreadPool::init())) is_inited_ = true;
   }
   return ret;
 }
 
 void ObAiService::destroy()
 {
+  stop();
+  wait();
   is_inited_ = false;
+}
+
+int ObAiService::start()
+{
+  return is_inited_ ? share::ObThreadPool::start() : OB_NOT_INIT;
 }
 
 int ObAiService::get_ai_service_guard(ObAiServiceGuard &ai_service_guard)
@@ -149,3 +158,5 @@ int ObAiServiceGuard::get_ai_endpoint_by_ai_model_name(const common::ObString &a
 
 } // namespace omt
 } // namespace oceanbase
+
+#include "observer/omt/ob_ai_column_worker.ipp"

@@ -2144,6 +2144,22 @@ int ObDmlCgService::generate_dml_base_ctdef(ObLogDelUpd &op,
   int ret = OB_SUCCESS;
   if (OB_FAIL(generate_dml_base_ctdef(op, index_dml_info, dml_base_ctdef, old_row, new_row))) {
   }
+  if (OB_SUCC(ret) && index_dml_info.is_primary_index_) {
+    const ObTableSchema *table = nullptr;
+    if (OB_FAIL(cg_.opt_ctx_->get_schema_guard()->get_table_schema(index_dml_info.ref_table_id_, table))) {
+    } else if (nullptr == table) {
+      ret = OB_SCHEMA_ERROR;
+    } else {
+      for (int64_t i = 0; i < table->get_column_count(); ++i) {
+        const auto *column = table->get_column_schema_by_idx(i);
+        if (nullptr != column && column->is_ai_column()) {
+          cg_.phy_plan_->set_has_nested_sql(true);
+          cg_.phy_plan_->set_need_serial_exec(true);
+          break;
+        }
+      }
+    }
+  }
   // only primary key need to apply constraint, fk and trigger
   //generate check cst info
   if (OB_SUCC(ret) && index_dml_info.is_primary_index_) {
