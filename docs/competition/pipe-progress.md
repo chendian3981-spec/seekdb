@@ -95,6 +95,9 @@ ALTER ADD 后的历史行可以显式使用 RETRY 入队。后台为单线程，
 
 ## 推送与提测
 
-代码保存在本机 `pipe/seekdb-solutions`。官方公共仓库可作为开发基线，
-提交评测仍须写入报名仓库。对 `su7-lu/seekdb-2026` 的认证访问返回
-`Repository not found`，尚未推送、触发评测或获得官方分数。
+官方仓库已 Fork 至 `https://github.com/chendian3981-spec/seekdb`，代码已
+推送到 Fork 的 `pipe/seekdb-solutions` 分支。本地 `fork` remote 指向此仓库，
+`origin` 保留官方源码地址。赛题实现与兼容修复提交截至 `d023e6cb`。
+
+原登记仓库 `su7-lu/seekdb-2026` 的认证访问返回 `Repository not found`。
+比赛页面尚未切换到新 Fork，尚未触发正式评测或获得官方分数。
